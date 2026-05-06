@@ -66,6 +66,7 @@ class Game:
         self.transition_timer = 0
         self.transition_alpha = 0
         self.level_done_timer = 0  # auto-advance from LEVEL_DONE to SHOP
+        self.shop_enter_cooldown = 0  # prevent instant SPACE in shop
 
     # --------------------- helpers --------------------- #
     def _begin_level(self, idx: int) -> None:
@@ -153,6 +154,8 @@ class Game:
                 self.intro = story.ChatScene(story.INTRO, "Dog Rescue")
                 self.state = INTRO
         elif self.state == SHOP:
+            if self.shop_enter_cooldown > 0:
+                return True  # ignore all input during cooldown
             if event.key == pygame.K_UP:
                 self.shop.idx = (self.shop.idx - 1) % len(self.shop.items)
             if event.key == pygame.K_DOWN:
@@ -233,6 +236,7 @@ class Game:
         if self.level_idx + 1 < len(S.LEVELS):
             self.shop = ui.ShopScreen(self.player.coins, self.level_idx)
             self.state = SHOP
+            self.shop_enter_cooldown = 30  # ~0.5s cooldown to prevent instant skip
         else:
             self.outro = story.ChatScene(story.OUTRO, "Dog Rescue")
             self.state = OUTRO
@@ -251,6 +255,8 @@ class Game:
         elif self.state == CHAR_SELECT:
             self.char_select.update()
         elif self.state == SHOP:
+            if self.shop_enter_cooldown > 0:
+                self.shop_enter_cooldown -= 1
             if self.shop:
                 self.shop.update()
         elif self.state == INTRO:
