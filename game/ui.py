@@ -125,7 +125,7 @@ class HUD:
         dfs_surf.blit(dfs_label, (10, 10))
         dfs_surf.blit(dfs_val, (10, 30))
 
-        hint = self.micro.render("WASD: Di chuyen | E: Mo long | T: Shop", True, (160, 160, 180))
+        hint = self.micro.render("WASD: Di chuyen | G: Radar | T: Dich chuyen", True, (160, 160, 180))
         dfs_surf.blit(hint, (10, 55))
 
         surf.blit(dfs_surf, (15, S.SCREEN_H - dfs_h - 15))
@@ -303,5 +303,11 @@ class ShopScreen:
             surf.blit(cost, (shop_w + 100 - cost.get_width(), y + 5))
             surf.blit(desc, (200, y + 35))
 
-        hint = self.small.render("UP/DOWN: Chon | ENTER: Mua | T: Tiep tuc man tiep theo", True, (200, 200, 220))
+        hint = self.small.render("UP/DOWN: Chon | ENTER: Mua | SPACE: Tiep tuc man tiep theo", True, (200, 200, 220))
         surf.blit(hint, (S.SCREEN_W // 2 - hint.get_width() // 2, S.SCREEN_H - 130))
+
+        next_lvl = self.level_idx + 2
+        if next_lvl <= len(S.LEVELS):
+            next_cfg = S.LEVELS[self.level_idx + 1]
+            next_txt = self.small.render(f"Man tiep theo: {next_cfg['name']} ({next_cfg['thieves']} trom)", True, (180, 220, 255))
+            surf.blit(next_txt, (S.SCREEN_W // 2 - next_txt.get_width() // 2, S.SCREEN_H - 100))

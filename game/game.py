@@ -32,6 +32,7 @@ WIN = "win"
 LOSE = "lose"
 CHAR_SELECT = "char_select"
 SHOP = "shop"
+TRANSITION = "transition"  # smooth transition between levels
 
 
 class Game:
@@ -44,7 +45,7 @@ class Game:
         self.player: Optional[Player] = None
         self.title = ui.TitleScreen()
         self.char_select = ui.CharSelect()
-        self.shop = None
+        self.shop: Optional[ui.ShopScreen] = None
         self.hud = ui.HUD()
         self.intro = story.ChatScene(story.INTRO, "Dog Rescue")
         self.level_intro: Optional[story.ChatScene] = None
@@ -58,16 +59,19 @@ class Game:
         self.fireballs: List[entities.Fireball] = []
         self.bullets: List[Bullet] = []
         self.fullscreen = False
-        self.rescued_dogs: int = 0  # track how many dogs rescued so far
+        self.rescued_dogs: int = 0
         self.player_skin = "Boy"
-        # fire dragon animation timer
         self.fire_dragon_anim_t = 0
+        # Transition timer for smooth level changes
+        self.transition_timer = 0
+        self.transition_alpha = 0
+        self.level_done_timer = 0  # auto-advance from LEVEL_DONE to SHOP
+        self.shop_enter_cooldown = 0  # prevent instant SPACE in shop
 
     # --------------------- helpers --------------------- #
     def _begin_level(self, idx: int) -> None:
         self.level_idx = idx
         self.level = build_level(self.level_idx)
-        # preserve coins and skin and skills
         old_coins = self.player.coins if self.player else 0
         old_skin = self.player.skin if self.player else self.player_skin
         old_speed = self.player.speed_boost if self.player else False
@@ -91,9 +95,8 @@ class Game:
         self.fireballs = []
         self.dog_freed = False
         self.cam = (0.0, 0.0)
-        self.state = LEVEL_INTRO
+        self.level_done_timer = 0
 
-        dog_name = self.level.config.get("dog_name", "")
         self.level_intro = story.ChatScene(
             [story.Bubble(story.HER, story.LEVEL_INTROS[idx])],
             f"Man {idx + 1}: {self.level.config['name']}",
@@ -101,8 +104,15 @@ class Game:
         self.message = ""
         self.message_timer = 0
 
-        # Start background music for this level
+        # Transition effect: fade in
+        self.state = TRANSITION
+        self.transition_timer = 40
+        self.transition_alpha = 255
+
         audio.play_bgm(idx)
+
+    def _finish_transition(self) -> None:
+        self.state = LEVEL_INTRO
 
     def _set_message(self, msg: str, frames: int = 120) -> None:
         self.message = msg
@@ -144,6 +154,8 @@ class Game:
                 self.intro = story.ChatScene(story.INTRO, "Dog Rescue")
                 self.state = INTRO
         elif self.state == SHOP:
+            if self.shop_enter_cooldown > 0:
+                return True  # ignore all input during cooldown
             if event.key == pygame.K_UP:
                 self.shop.idx = (self.shop.idx - 1) % len(self.shop.items)
             if event.key == pygame.K_DOWN:
@@ -165,8 +177,8 @@ class Game:
                         self.player.bullets += 10
                     if item["id"] == "stop":
                         self.player.stop_time_skill = True
-            if event.key == pygame.K_t:
-                self.state = LEVEL_INTRO
+            if event.key in (pygame.K_SPACE, pygame.K_t):
+                # Continue to next level from shop
                 self._begin_level(self.level_idx + 1)
         elif self.state == INTRO:
             if event.key in (pygame.K_SPACE, pygame.K_RETURN):
@@ -200,13 +212,9 @@ class Game:
                     self.player.bullets -= 1
                     self._shoot_bullet()
         elif self.state == LEVEL_DONE:
-            if event.key == pygame.K_t:
-                if self.level_idx + 1 < len(S.LEVELS):
-                    self.shop = ui.ShopScreen(self.player.coins, self.level_idx)
-                    self.state = SHOP
-                else:
-                    self.outro = story.ChatScene(story.OUTRO, "Dog Rescue")
-                    self.state = OUTRO
+            # Any key press advances to shop or outro
+            if event.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_t):
+                self._advance_from_level_done()
         elif self.state == OUTRO:
             if event.key in (pygame.K_SPACE, pygame.K_RETURN):
                 self.outro.advance()
@@ -224,6 +232,15 @@ class Game:
                 self._begin_level(self.level_idx)
         return True
 
+    def _advance_from_level_done(self) -> None:
+        if self.level_idx + 1 < len(S.LEVELS):
+            self.shop = ui.ShopScreen(self.player.coins, self.level_idx)
+            self.state = SHOP
+            self.shop_enter_cooldown = 30  # ~0.5s cooldown to prevent instant skip
+        else:
+            self.outro = story.ChatScene(story.OUTRO, "Dog Rescue")
+            self.state = OUTRO
+
     # --------------------- update ---------------------- #
     def update(self) -> None:
         self.anim_t += 1
@@ -238,17 +255,33 @@ class Game:
         elif self.state == CHAR_SELECT:
             self.char_select.update()
         elif self.state == SHOP:
-            self.shop.update()
+            if self.shop_enter_cooldown > 0:
+                self.shop_enter_cooldown -= 1
+            if self.shop:
+                self.shop.update()
         elif self.state == INTRO:
             self.intro.update()
         elif self.state == LEVEL_INTRO and self.level_intro:
             self.level_intro.update()
+        elif self.state == TRANSITION:
+            self._update_transition()
         elif self.state == PLAY:
             self._update_play()
+        elif self.state == LEVEL_DONE:
+            # Auto-advance to shop after 3 seconds if player doesn't press anything
+            self.level_done_timer += 1
+            if self.level_done_timer >= 180:  # 3 seconds
+                self._advance_from_level_done()
         elif self.state == OUTRO and self.outro:
             self.outro.update()
         elif self.state in (WIN, LOSE) and self.end:
             self.end.update()
+
+    def _update_transition(self) -> None:
+        self.transition_timer -= 1
+        self.transition_alpha = max(0, int(255 * (self.transition_timer / 40.0)))
+        if self.transition_timer <= 0:
+            self._finish_transition()
 
     def _try_interact(self) -> None:
         assert self.level and self.player
@@ -263,22 +296,9 @@ class Game:
                 dog_name = self.level.config.get("dog_name", "cho")
                 is_mother = self.level.config.get("is_mother", False)
                 if is_mother:
-                    self._set_message(f"Da giai cuu {dog_name}! Cong ra da mo tai LOI THOAT phia Bac!", 180)
+                    self._set_message(f"Da giai cuu {dog_name}! Hay quay ve CONG RA!", 240)
                 else:
-                    self._set_message(f"Da giai cuu cho con {dog_name}! Cong ra da mo!", 180)
-
-        # Interact with portal (at the player's starting point)
-        elif cell == self.level.player_start and self.dog_freed:
-            audio.play_win()
-            self.rescued_dogs += 1
-            dog_name = self.level.config.get("dog_name", "cho")
-            if self.level_idx + 1 < len(S.LEVELS):
-                self.state = LEVEL_DONE
-                self._set_message(f"Da cuu {dog_name}! ({self.rescued_dogs}/6)", 120)
-            else:
-                self.rescued_dogs = 6  # all rescued
-                self.outro = story.ChatScene(story.OUTRO, "Dog Rescue")
-                self.state = OUTRO
+                    self._set_message(f"Da giai cuu {dog_name}! Hay quay ve CONG RA!", 240)
 
     def _trigger_dfs(self) -> None:
         assert self.level and self.player
@@ -304,19 +324,21 @@ class Game:
         keys = pygame.key.get_pressed()
         self.player.update(keys, self.level.maze)
 
-        # auto-pick up keys / coins
         cell = self.player.cell()
+
+        # auto-pick up keys
         if cell in self.level.keys:
             self.level.keys.remove(cell)
             self.player.keys += 1
             audio.play_pickup()
             self._set_message(f"Nhat duoc chia khoa! ({self.player.keys}/{self.level.config['keys']})", 90)
 
+        # auto-pick up coins
         if cell in self.level.coins:
             self.level.coins.remove(cell)
             self.player.coins += 5
             audio.play_coin()
-            self._set_message(f"Nhat duoc 5 dong xu! Tong: {self.player.coins}", 60)
+            self._set_message(f"+5 xu! Tong: {self.player.coins}", 60)
 
         # footstep sounds
         if any(keys[k] for k in (pygame.K_w, pygame.K_a, pygame.K_s, pygame.K_d,
@@ -329,17 +351,27 @@ class Game:
             if not self.message:
                 self._set_message("Dang tru an — trom khong thay ban", 30)
 
-        # cage auto-interaction
+        # Auto-free dog when at cage with enough keys
         if cell == self.level.cage_cell and self.player.keys >= self.level.config["keys"] and not self.dog_freed:
             self.dog_freed = True
             audio.play_alarm()
             self.level.maze.grid[0][1] = FLOOR
             dog_name = self.level.config.get("dog_name", "cho")
-            is_mother = self.level.config.get("is_mother", False)
-            if is_mother:
-                self._set_message(f"Da giai cuu {dog_name}! Cong ra da mo!", 180)
+            self._set_message(f"Da giai cuu {dog_name}! Hay quay ve CONG RA!", 240)
+
+        # Auto-complete level when player reaches exit with dog freed
+        if cell == self.level.player_start and self.dog_freed:
+            audio.play_win()
+            self.rescued_dogs += 1
+            dog_name = self.level.config.get("dog_name", "cho")
+            if self.level_idx + 1 < len(S.LEVELS):
+                self.state = LEVEL_DONE
+                self.level_done_timer = 0
+                self._set_message(f"Da cuu {dog_name}! ({self.rescued_dogs}/6)", 180)
             else:
-                self._set_message(f"Da giai cuu cho con {dog_name}! Cong ra da mo!", 180)
+                self.rescued_dogs = 6
+                self.outro = story.ChatScene(story.OUTRO, "Dog Rescue")
+                self.state = OUTRO
 
         # update thieves, dragons, bats
         if self.player.stop_time_timer > 0:
@@ -354,7 +386,7 @@ class Game:
                         if self.dog_freed:
                             self.dog_freed = False
                             self.level.maze.grid[0][1] = WALL
-                            self._set_message("Cho da chay lac ve chuong!", 120)
+                            self._set_message("Cho bi bat lai! Tim cach giai cuu lan nua!", 120)
                         self._respawn_player()
                     if self.player.hp <= 0:
                         audio.stop_bgm()
@@ -397,13 +429,13 @@ class Game:
     def _shoot_bullet(self):
         keys = pygame.key.get_pressed()
         dx, dy = 0, 0
-        if keys[pygame.K_LEFT]:
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
             dx = -1
-        elif keys[pygame.K_RIGHT]:
+        elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             dx = 1
-        elif keys[pygame.K_UP]:
+        elif keys[pygame.K_UP] or keys[pygame.K_w]:
             dy = -1
-        elif keys[pygame.K_DOWN]:
+        elif keys[pygame.K_DOWN] or keys[pygame.K_s]:
             dy = 1
         else:
             dx = 1
@@ -451,11 +483,15 @@ class Game:
         elif self.state == CHAR_SELECT:
             self.char_select.draw(self.screen)
         elif self.state == SHOP:
-            self.shop.draw(self.screen)
+            if self.shop:
+                self._draw_play()
+                self.shop.draw(self.screen)
         elif self.state == INTRO:
             self.intro.draw(self.screen)
         elif self.state == LEVEL_INTRO and self.level_intro:
             self.level_intro.draw(self.screen)
+        elif self.state == TRANSITION:
+            self._draw_transition()
         elif self.state == PLAY or self.state == LEVEL_DONE:
             self._draw_play()
         elif self.state == OUTRO and self.outro:
@@ -464,6 +500,48 @@ class Game:
             self.end.draw(self.screen)
         elif self.state == LOSE and self.end:
             self.end.draw(self.screen)
+
+    def _draw_transition(self) -> None:
+        """Draw a fade-in transition when starting a new level."""
+        if self.level and self.player:
+            self._update_camera()
+        self.screen.fill((10, 10, 16))
+
+        # Show level name in center during transition
+        font = fonts.get(40, bold=True)
+        small = fonts.get(22)
+        cfg = S.LEVELS[self.level_idx]
+        title = font.render(f"Man {self.level_idx + 1}", True, (250, 220, 100))
+        name = small.render(cfg["name"], True, (220, 220, 240))
+        dog_name = cfg.get("dog_name", "")
+        is_mother = cfg.get("is_mother", False)
+        if is_mother:
+            rescue_txt = small.render(f"Giai cuu cho me {dog_name}!", True, (255, 150, 150))
+        else:
+            rescue_txt = small.render(f"Giai cuu cho con {dog_name}!", True, (150, 255, 150))
+
+        self.screen.blit(title, (S.SCREEN_W // 2 - title.get_width() // 2, S.SCREEN_H // 2 - 60))
+        self.screen.blit(name, (S.SCREEN_W // 2 - name.get_width() // 2, S.SCREEN_H // 2))
+        self.screen.blit(rescue_txt, (S.SCREEN_W // 2 - rescue_txt.get_width() // 2, S.SCREEN_H // 2 + 40))
+
+        # Thief count info
+        thief_txt = small.render(f"So ten trom: {cfg['thieves']} | Me cung: {cfg['size']}x{cfg['size']}", True, (200, 200, 220))
+        self.screen.blit(thief_txt, (S.SCREEN_W // 2 - thief_txt.get_width() // 2, S.SCREEN_H // 2 + 80))
+
+        # Draw puppy or dog sprite
+        if is_mother and sprites.DOG_SPRITE:
+            dog = pygame.transform.scale(sprites.DOG_SPRITE, (96, 96))
+            self.screen.blit(dog, (S.SCREEN_W // 2 - 48, S.SCREEN_H // 2 - 180))
+        elif sprites.PUPPY_SPRITE:
+            puppy = pygame.transform.scale(sprites.PUPPY_SPRITE, (72, 72))
+            self.screen.blit(puppy, (S.SCREEN_W // 2 - 36, S.SCREEN_H // 2 - 160))
+
+        # Fade overlay
+        if self.transition_alpha > 0:
+            fade = pygame.Surface((S.SCREEN_W, S.SCREEN_H))
+            fade.fill((0, 0, 0))
+            fade.set_alpha(self.transition_alpha)
+            self.screen.blit(fade, (0, 0))
 
     def _draw_play(self) -> None:
         assert self.level and self.player
@@ -509,7 +587,7 @@ class Game:
                 py = ly * S.TILE - cam_y
                 self.screen.blit(sprites.LANTERN_SPRITE, (px, py))
 
-        # coins
+        # coins with glow + bob animation
         for cc in self.level.coins:
             px = cc[0] * S.TILE + S.TILE // 2 - cam_x
             py = cc[1] * S.TILE + S.TILE // 2 - cam_y
@@ -612,7 +690,7 @@ class Game:
                 self.screen.blit(rot_portal, rect)
 
             font = fonts.get(18, bold=True)
-            txt = font.render("CONG RA DA MO", True, (200, 150, 255))
+            txt = font.render(">> CONG RA <<", True, (200, 150, 255))
             self.screen.blit(txt, (px_e - txt.get_width() // 2, py_e - S.TILE * 1.5))
         else:
             if sprites.EXIT_GATE_SPRITE:
@@ -620,9 +698,6 @@ class Game:
                 placeholder.set_alpha(80)
                 rect = placeholder.get_rect(center=(px_e, py_e))
                 self.screen.blit(placeholder, rect)
-                font = fonts.get(12, bold=True)
-                txt = font.render("CONG DANG KHOA", True, (150, 150, 160))
-                self.screen.blit(txt, (px_e - txt.get_width() // 2, py_e - S.TILE))
 
         # darkness
         if self.level.config.get("dark"):
@@ -649,7 +724,7 @@ class Game:
             rescued_count=self.rescued_dogs,
         )
 
-        # banner message
+        # banner message at bottom
         if self.message:
             font = fonts.get(22, bold=True)
             text = font.render(self.message, True, (255, 255, 255))
@@ -666,18 +741,29 @@ class Game:
             font = fonts.get(36, bold=True)
             dog_name = self.level.config.get("dog_name", "")
             t = font.render(f"HOAN THANH MAN {self.level_idx + 1}!", True, (100, 255, 100))
-            self.screen.blit(t, (S.VIEW_W // 2 - t.get_width() // 2, S.VIEW_H // 2 - 60))
+            self.screen.blit(t, (S.VIEW_W // 2 - t.get_width() // 2, S.VIEW_H // 2 - 80))
 
-            small = fonts.get(22)
-            rescue_msg = f"Da giai cuu {dog_name}!"
+            small = fonts.get(24)
+            rescue_msg = f"Da giai cuu {dog_name}! ({self.rescued_dogs}/6 cho)"
             rm = small.render(rescue_msg, True, (255, 230, 100))
-            self.screen.blit(rm, (S.VIEW_W // 2 - rm.get_width() // 2, S.VIEW_H // 2 - 10))
+            self.screen.blit(rm, (S.VIEW_W // 2 - rm.get_width() // 2, S.VIEW_H // 2 - 20))
 
-            n = small.render("Nhan [T] de vao CUA HANG nang cap", True, (255, 255, 255))
-            self.screen.blit(n, (S.VIEW_W // 2 - n.get_width() // 2, S.VIEW_H // 2 + 30))
+            # Show which dog was rescued with sprite
+            is_mother = self.level.config.get("is_mother", False)
+            dog_spr = sprites.DOG_SPRITE if is_mother else sprites.PUPPY_SPRITE
+            if dog_spr:
+                scaled = pygame.transform.scale(dog_spr, (64, 64))
+                self.screen.blit(scaled, (S.VIEW_W // 2 - 32, S.VIEW_H // 2 + 20))
+
+            n = small.render("Nhan SPACE de tiep tuc", True, (255, 255, 255))
+            if (self.anim_t // 30) % 2 == 0:
+                self.screen.blit(n, (S.VIEW_W // 2 - n.get_width() // 2, S.VIEW_H // 2 + 100))
+
+            if self.level_idx + 1 < len(S.LEVELS):
+                next_txt = fonts.get(18).render(f"Man tiep theo: {S.LEVELS[self.level_idx + 1]['name']}", True, (200, 200, 220))
+                self.screen.blit(next_txt, (S.VIEW_W // 2 - next_txt.get_width() // 2, S.VIEW_H // 2 + 140))
 
     def _draw_fire_dragons(self) -> None:
-        """Draw decorative fire-breathing dragons outside the maze boundary."""
         if not self.level or not sprites.FIRE_DRAGON_SPRITE:
             return
         cam_x, cam_y = self.cam
@@ -687,13 +773,10 @@ class Game:
             sx = int(fx - cam_x)
             sy = int(fy - cam_y)
 
-            # Only draw if near the viewport
             if -128 < sx < S.VIEW_W + 128 and -128 < sy < S.VIEW_H + 128:
-                # Slight bobbing animation
                 bob = math.sin(t * 0.05 + fx * 0.01) * 4
                 self.screen.blit(sprites.FIRE_DRAGON_SPRITE, (sx, int(sy + bob)))
 
-                # Animated fire breath
                 fire_phase = (t + int(fx * 13 + fy * 7)) % 120
                 if fire_phase < 40:
                     fire_len = int(20 + fire_phase * 1.5)
@@ -709,18 +792,17 @@ class Game:
                                            (fi + fire_len // 2, 10 + int(math.sin(fi * 0.3) * 3)),
                                            max(1, 6 - fi // 8))
 
-                    # Orient fire based on facing direction
                     center_x = sx + S.TILE
                     center_y = int(sy + bob) + S.TILE
-                    if facing == 0:  # top -> fire goes down
+                    if facing == 0:
                         self.screen.blit(pygame.transform.rotate(fire_surf, -90),
                                          (center_x - 10, center_y + S.TILE))
-                    elif facing == 2:  # bottom -> fire goes up
+                    elif facing == 2:
                         self.screen.blit(pygame.transform.rotate(fire_surf, 90),
                                          (center_x - 10, center_y - S.TILE - fire_len))
-                    elif facing == 1:  # left -> fire goes right
+                    elif facing == 1:
                         self.screen.blit(fire_surf, (center_x + S.TILE, center_y - 10))
-                    else:  # right -> fire goes left
+                    else:
                         self.screen.blit(pygame.transform.flip(fire_surf, True, False),
                                          (center_x - S.TILE - fire_len, center_y - 10))
 
