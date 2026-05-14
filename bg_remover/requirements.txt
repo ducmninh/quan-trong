@@ -1,0 +1,8 @@
+# Background-removal tool dependencies.
+# Install with: pip install -r bg_remover/requirements.txt
+rembg>=2.0.50
+onnxruntime>=1.16
+Pillow>=10.0
+numpy>=1.24
+# Optional: only needed if you want the web GUI (`python -m bg_remover --gui`).
+gradio>=4.0
