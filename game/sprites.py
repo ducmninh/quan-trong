@@ -613,27 +613,126 @@ _FIRE = [
 _FIRE_PAL = {'O': (255, 69, 0)}
 _DRAGON_PAL = {'G': (50, 180, 50), 'R': (255, 50, 50), 'Y': (255, 220, 50), 'W': (255, 255, 255), '.': (0,0,0,0)}
 
-_THIEF_A = [
+# --- Thief directional sprites (down / up / left / right) -------------- #
+# Each direction has two animation frames (A/B) for a simple walking cycle.
+_THIEF_DOWN_A = [
+    "................",
+    ".....BBBBBB.....",
+    "....BssssssB....",
+    "...BBssssssBB...",
+    "...BsWWssWWsB...",
+    "...BsWPssPWsB...",
+    "...BRRRRRRRRB...",
+    "....BssssssB....",
+    "...BBBBBBBBBB...",
+    "..BBBBBBBBBBBB..",
+    "..BBBBBYBBBBBB..",
+    "..BBBBBBBBBBBB..",
+    "...BBBBBBBBBB...",
+    "....GG....GG....",
+    "....GG....GG....",
+    "...bbb....bb....",
+]
+_THIEF_DOWN_B = [
+    "................",
+    ".....BBBBBB.....",
+    "....BssssssB....",
+    "...BBssssssBB...",
+    "...BsWWssWWsB...",
+    "...BsWPssPWsB...",
+    "...BRRRRRRRRB...",
+    "....BssssssB....",
+    "...BBBBBBBBBB...",
+    "..BBBBBBBBBBBB..",
+    "..BBBBBYBBBBBB..",
+    "..BBBBBBBBBBBB..",
+    "...BBBBBBBBBB...",
+    "....GG....GG....",
+    "....GG....GG....",
+    "...bb....bbb....",
+]
+_THIEF_UP_A = [
+    "................",
+    ".....BBBBBB.....",
+    "....BBBBBBBB....",
+    "...BBBBBBBBBB...",
+    "...BBBBBBBBBB...",
+    "...BBBBBBBBBB...",
+    "...BBBBBBBBBB...",
+    "....BBBBBBBB....",
+    "...BBBBBBBBBB...",
+    "..BBBBBBBBBBBB..",
+    "..BBBBBBBBBBBB..",
+    "..BBBBBBBBBBBB..",
+    "...BBBBBBBBBB...",
+    "....GG....GG....",
+    "....GG....GG....",
+    "...bbb....bb....",
+]
+_THIEF_UP_B = [
+    "................",
+    ".....BBBBBB.....",
+    "....BBBBBBBB....",
+    "...BBBBBBBBBB...",
+    "...BBBBBBBBBB...",
+    "...BBBBBBBBBB...",
+    "...BBBBBBBBBB...",
+    "....BBBBBBBB....",
+    "...BBBBBBBBBB...",
+    "..BBBBBBBBBBBB..",
+    "..BBBBBBBBBBBB..",
+    "..BBBBBBBBBBBB..",
+    "...BBBBBBBBBB...",
+    "....GG....GG....",
+    "....GG....GG....",
+    "...bb....bbb....",
+]
+_THIEF_LEFT_A = [
+    "................",
     "....BBBBBB......",
     "...BssssssB.....",
-    "..BssssssssB....",
-    "..BssssssssB....",
-    "..BssWWWWssB....",
-    "..BssWBBWssB....",
-    "...ssWBBWss.....",
-    "....ssssss......",
-    "....GGGGGG......",
-    "...GGGGGGGG.....",
-    "..GGGGGGGGGG....",
-    "..GGGGGGGGGG....",
-    "..ss......ss....",
+    "..BssssssBB.....",
+    "..BsWPsBBBB.....",
+    "..BRRRRRBBB.....",
+    "..BssssBBBB.....",
+    "...BssssBBB.....",
+    "...BBBBBBBB.....",
+    "..BBBBBBBBBB....",
+    "..BBYBBBBBBB....",
+    "..BBBBBBBBBB....",
+    "...BBBBBBBB.....",
+    "....GGGG........",
+    "....GG..GG......",
+    "...bbb.bbb......",
 ]
-_THIEF_B = _THIEF_A
+_THIEF_LEFT_B = [
+    "................",
+    "....BBBBBB......",
+    "...BssssssB.....",
+    "..BssssssBB.....",
+    "..BsWPsBBBB.....",
+    "..BRRRRRBBB.....",
+    "..BssssBBBB.....",
+    "...BssssBBB.....",
+    "...BBBBBBBB.....",
+    "..BBBBBBBBBB....",
+    "..BBYBBBBBBB....",
+    "..BBBBBBBBBB....",
+    "...BBBBBBBB.....",
+    "....GGGG........",
+    "...GG..GG.......",
+    "..bbb..bbb......",
+]
+# RIGHT frames are produced by horizontally flipping LEFT frames in init().
 _THIEF_PAL = {
-    'B': (30, 30, 30),
-    's': (230, 190, 150),
-    'W': (255, 255, 255),
-    'G': (60, 60, 60),
+    'B': (28, 28, 34),     # dark hood / cloak
+    'b': (16, 16, 20),     # darker boots / outline
+    's': (230, 190, 150),  # skin
+    'W': (245, 245, 245),  # eye whites
+    'P': (10, 10, 10),     # pupils
+    'R': (170, 35, 45),    # red mask band
+    'G': (55, 55, 65),     # pants
+    'Y': (220, 195, 55),   # belt buckle (gold)
 }
 
 _PLAYER_BOY_A = [
@@ -848,8 +947,17 @@ def init() -> None:
     BULLET_SPRITE = _draw(_BULLET, _BULLET_PAL)
     SHOP_KEEPER_SPRITE = _draw(_SHOP_KEEPER, _SHOP_KEEPER_PAL)
     
-    THIEF_FRAMES["A"] = _draw(_THIEF_A, _THIEF_PAL)
-    THIEF_FRAMES["B"] = _draw(_THIEF_B, _THIEF_PAL)
+    THIEF_FRAMES["down_A"] = _draw(_THIEF_DOWN_A, _THIEF_PAL)
+    THIEF_FRAMES["down_B"] = _draw(_THIEF_DOWN_B, _THIEF_PAL)
+    THIEF_FRAMES["up_A"] = _draw(_THIEF_UP_A, _THIEF_PAL)
+    THIEF_FRAMES["up_B"] = _draw(_THIEF_UP_B, _THIEF_PAL)
+    THIEF_FRAMES["left_A"] = _draw(_THIEF_LEFT_A, _THIEF_PAL)
+    THIEF_FRAMES["left_B"] = _draw(_THIEF_LEFT_B, _THIEF_PAL)
+    THIEF_FRAMES["right_A"] = pygame.transform.flip(THIEF_FRAMES["left_A"], True, False)
+    THIEF_FRAMES["right_B"] = pygame.transform.flip(THIEF_FRAMES["left_B"], True, False)
+    # Back-compat aliases used by older code paths (default to "down").
+    THIEF_FRAMES["A"] = THIEF_FRAMES["down_A"]
+    THIEF_FRAMES["B"] = THIEF_FRAMES["down_B"]
     DOG_SPRITE = _draw(_DOG, _DOG_PAL)
     PUPPY_SPRITE = _draw(_PUPPY, _PUPPY_PAL)
     FIRE_DRAGON_SPRITE = pygame.transform.scale(_draw(_FIRE_DRAGON, _FIRE_DRAGON_PAL), (S.TILE * 2, S.TILE * 2))

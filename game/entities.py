@@ -187,6 +187,8 @@ class Thief:
     sees_player: bool = False
     # knife slash animation timer (increments when sees_player)
     slash_t: int = 0
+    # current facing direction for sprite selection: "down" | "up" | "left" | "right"
+    facing: str = "down"
 
     def cell(self) -> Cell:
         return pixel_to_cell(self.x, self.y)
@@ -314,12 +316,19 @@ class Thief:
         else:
             self.x += speed * ddx / dist
             self.y += speed * ddy / dist
+        # update facing based on the dominant movement axis
+        if abs(ddx) > abs(ddy):
+            self.facing = "right" if ddx > 0 else "left"
+        elif abs(ddy) > 0:
+            self.facing = "down" if ddy > 0 else "up"
 
     def collides_with(self, player: Player) -> bool:
         return math.hypot(self.x - player.x, self.y - player.y) < S.TILE * 0.55
 
     def draw(self, surf: pygame.Surface, cam: Tuple[float, float], anim_t: int) -> None:
-        frame = sprites.THIEF_FRAMES["A" if (anim_t // 12) % 2 == 0 else "B"]
+        ab = "A" if (anim_t // 12) % 2 == 0 else "B"
+        key = f"{self.facing}_{ab}"
+        frame = sprites.THIEF_FRAMES.get(key, sprites.THIEF_FRAMES[ab])
         cx = int(self.x - cam[0])
         cy = int(self.y - cam[1])
         rect = frame.get_rect(center=(cx, cy))
